@@ -10,7 +10,7 @@ const boot = async () => {
   const database = await connectDatabase();
   if (database.mode === "memory") await seedMemoryStore();
   app.listen(env.port, () => {
-    console.log(`DIAS API running on http://localhost:${env.port}`);
+console.log(`DIAS API running on port ${env.port}`);
   });
 };
 
