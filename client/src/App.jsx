@@ -7,8 +7,11 @@ import {
   AlertTriangle,
   BarChart3,
   FileSpreadsheet,
+  Github,
   HeartPulse,
+  Linkedin,
   LogOut,
+  Mail,
   Moon,
   Pill,
   Plus,
@@ -35,21 +38,38 @@ const nav = [
   ["Food Checker", Stethoscope],
   ["ICSR Reporting", HeartPulse],
   ["Counseling", ShieldCheck],
-  ["Admin", FileSpreadsheet]
+  ["Admin", FileSpreadsheet],
+  ["About", Activity]
+];
+
+const professionalLinks = [
+  { label: "vipin22nov@gmail.com", helper: "Email", href: "mailto:vipin22nov@gmail.com", icon: Mail },
+  { label: "LinkedIn profile", helper: "www.linkedin.com/in/vipin-prajapati-5a11a0275", href: "https://www.linkedin.com/in/vipin-prajapati-5a11a0275", icon: Linkedin },
+  { label: "GitHub profile", helper: "github.com/VipinPrajapati22", href: "https://github.com/VipinPrajapati22", icon: Github }
 ];
 
 function AuthScreen({ onLogin }) {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name: "", email: "admin@dias.local", password: "Admin@123", role: "Admin" });
+  const [loading, setLoading] = useState(false);
 
   const submit = async (event) => {
     event.preventDefault();
-    const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
-    const { data } = await api.post(endpoint, form);
-    localStorage.setItem("dias_token", data.token);
-    localStorage.setItem("dias_user", JSON.stringify(data.user));
-    toast.success("Welcome to DIAS");
-    onLogin(data.user);
+    setLoading(true);
+    try {
+      const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
+      const { data } = await api.post(endpoint, form);
+      localStorage.setItem("dias_token", data.token);
+      localStorage.setItem("dias_user", JSON.stringify(data.user));
+      toast.success("Welcome to DIAS");
+      onLogin(data.user);
+    } catch (error) {
+      const message = error.response?.data?.message || error.message || "Authentication failed. Please try again.";
+      toast.error(message);
+      console.error("Auth error:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -80,13 +100,33 @@ function AuthScreen({ onLogin }) {
               <option>Admin</option><option>Pharmacist</option><option>User</option>
             </select>
           )}
-          <button className="mt-5 w-full rounded-lg bg-clinical-600 px-4 py-3 font-semibold text-white hover:bg-clinical-500">{mode === "login" ? "Login" : "Register"}</button>
-          <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")} className="mt-3 w-full text-sm font-semibold text-clinical-600">
-            {mode === "login" ? "Need an account?" : "Already registered?"}
-          </button>
+          <button disabled={loading} className="mt-5 w-full rounded-lg bg-clinical-600 px-4 py-3 font-semibold text-white hover:bg-clinical-500 disabled:opacity-50 disabled:cursor-not-allowed">{loading ? "Authenticating..." : (mode === "login" ? "Login" : "Register")}</button>
+          <button type="button" disabled={loading} onClick={() => setMode(mode === "login" ? "register" : "login")} className="mt-3 w-full text-sm font-semibold text-clinical-600 disabled:opacity-50">{mode === "login" ? "Need an account?" : "Already registered?"}</button>
         </form>
+        <div className="lg:col-span-2">
+          <ProfessionalLinks />
+        </div>
       </section>
     </main>
+  );
+}
+
+function ProfessionalLinks() {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-soft dark:border-slate-800 dark:bg-slate-900">
+      <h2 className="text-xl font-bold text-slate-900 dark:text-white">Professional Links</h2>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        {professionalLinks.map(({ label, helper, href, icon: Icon }) => (
+          <a key={href} href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noreferrer" className="flex items-center gap-4 rounded-lg border border-slate-200 p-4 transition hover:border-clinical-300 hover:bg-clinical-50 dark:border-slate-800 dark:hover:bg-slate-800">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-clinical-100 text-clinical-700 dark:bg-clinical-900/50 dark:text-clinical-100"><Icon size={20} /></span>
+            <span className="min-w-0">
+              <span className="block truncate font-semibold">{label}</span>
+              <span className="block truncate text-sm text-slate-500">{helper}</span>
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -216,16 +256,22 @@ function InteractionChecker({ drugs }) {
   const [severity, setSeverity] = useState("All");
   const [results, setResults] = useState([]);
   const [grouped, setGrouped] = useState({});
+  const [checked, setChecked] = useState(false);
   const check = async () => {
-    const { data } = await api.post("/interactions/check", { drugs: selected.filter(Boolean), severity });
-    setResults(data.results);
-    setGrouped(data.grouped || {});
-    toast.success(`${data.count} interaction signal(s) found`);
+    try {
+      const { data } = await api.post("/interactions/check", { drugs: selected.filter(Boolean), severity });
+      setResults(data.results || []);
+      setGrouped(data.grouped || {});
+      setChecked(true);
+      toast.success(`${data.count} interaction signal(s) found`);
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Interaction check failed");
+    }
   };
   return (
     <View>
       <CheckerPanel title="Drug-Drug Interaction Checker" selected={selected} setSelected={setSelected} drugs={drugs} onCheck={check} severity={severity} setSeverity={setSeverity} actionLabel="Check interactions" />
-      <Results results={results} grouped={grouped} />
+      <Results results={results} grouped={grouped} checked={checked} emptyText="No important interaction signal found for this selection." />
     </View>
   );
 }
@@ -234,7 +280,9 @@ function CheckerPanel({ title, selected, setSelected, drugs, onCheck, severity, 
   return <div className="panel"><h2 className="section-title">{title}</h2><div className="grid gap-3 md:grid-cols-3">{selected.map((value, index) => <DrugAutocomplete key={index} value={value} fallbackDrugs={drugs} onChange={(nextValue) => { const next = [...selected]; next[index] = nextValue; setSelected(next); }} />)}</div><div className="relative z-10 mt-5 flex flex-wrap gap-2">{setSeverity && <select className="field max-w-xs" value={severity} onChange={(e) => setSeverity(e.target.value)}><option>All</option><option>Minor</option><option>Moderate</option><option>Severe</option><option>Contraindicated</option></select>}<button className="secondary" onClick={() => setSelected([...selected, ""])}><Plus size={18} /> Add drug</button><button className="primary" onClick={onCheck}><Search size={18} /> {actionLabel}</button></div></div>;
 }
 
-function Results({ results, grouped = {} }) {
+function Results({ results, grouped = {}, checked = false, emptyText = "No result found." }) {
+  if (!checked && results.length === 0) return null;
+  if (checked && results.length === 0) return <div className="panel mt-4 border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">{emptyText}</div>;
   const groups = Object.keys(grouped).length ? Object.entries(grouped) : [["Interaction results", results]];
   return <div className="mt-4 space-y-4">{groups.map(([group, items]) => <div key={group} className="space-y-3"><h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">{group}</h3>{items.map((item) => <div key={item._id || item.rawDescription || item.drugs.join()} className="panel"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-lg font-bold">{item.drugs.join(" + ")}</h3><Badge value={item.severity} /></div><p className="mt-3"><b>Mechanism:</b> {item.mechanism}</p><p><b>Clinical effect:</b> {item.clinicalEffect}</p><p><b>Recommendation:</b> {item.pharmacistRecommendation}</p><p><b>Monitoring:</b> {item.monitoringAdvice}</p>{item.source && <p className="mt-2 text-xs font-semibold text-clinical-600">Source: {item.source}</p>}{item.meddraTerms?.[0] && <p className="mt-2 text-sm text-slate-500">MedDRA: {item.meddraTerms[0].soc} / {item.meddraTerms[0].pt} / {item.meddraTerms[0].llt}</p>}</div>)}</div>)}</div>;
 }
@@ -242,11 +290,18 @@ function Results({ results, grouped = {} }) {
 function FoodChecker() {
   const [form, setForm] = useState({ drug: "Metronidazole", food: "Alcohol" });
   const [results, setResults] = useState([]);
+  const [checked, setChecked] = useState(false);
   const check = async () => {
-    const { data } = await api.post("/food/check", form);
-    setResults(data.results);
+    try {
+      const { data } = await api.post("/food/check", form);
+      setResults(data.results || []);
+      setChecked(true);
+      toast.success(`${data.count} food signal(s) found`);
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Food check failed");
+    }
   };
-  return <View><div className="panel"><h2 className="section-title">Drug-Food Interaction Checker</h2><div className="grid gap-3 md:grid-cols-2"><Input label="Drug" value={form.drug} onChange={(drug) => setForm({ ...form, drug })} /><Input label="Food or drink" value={form.food} onChange={(food) => setForm({ ...form, food })} /></div><button className="primary mt-4" onClick={check}><Search size={18} /> Check food risk</button></div><div className="mt-4 space-y-3">{results.map((item) => <div className="panel" key={`${item.drug}-${item.food}`}><div className="flex justify-between gap-2"><h3 className="text-lg font-bold">{item.drug} + {item.food}</h3><Badge value={item.severity} /></div><p className="mt-3"><b>Pharmacology:</b> {item.pharmacologyExplanation}</p><p><b>Risk mechanism:</b> {item.riskMechanism}</p><p><b>Counseling:</b> {item.patientCounselingAdvice}</p></div>)}</div></View>;
+  return <View><div className="panel"><h2 className="section-title">Drug-Food Interaction Checker</h2><div className="grid gap-3 md:grid-cols-2"><Input label="Drug" value={form.drug} onChange={(drug) => setForm({ ...form, drug })} /><Input label="Food or drink" value={form.food} onChange={(food) => setForm({ ...form, food })} /></div><button className="primary mt-4" onClick={check}><Search size={18} /> Check food risk</button></div>{checked && results.length === 0 && <div className="panel mt-4 border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">No important food interaction signal found.</div>}<div className="mt-4 space-y-3">{results.map((item) => <div className="panel" key={`${item.drug}-${item.food}`}><div className="flex justify-between gap-2"><h3 className="text-lg font-bold">{item.drug} + {item.food}</h3><Badge value={item.severity} /></div><p className="mt-3"><b>Why it matters:</b> {item.pharmacologyExplanation}</p><p><b>Mechanism:</b> {item.riskMechanism}</p><p><b>Advice:</b> {item.patientCounselingAdvice}</p></div>)}</div></View>;
 }
 
 function IcsrReporting() {
@@ -296,6 +351,39 @@ function Admin() {
     toast.success(shouldImport ? "Import complete" : "Preview ready");
   };
   return <View><div className="panel"><h2 className="section-title">Excel Upload and Validation</h2><div className="flex flex-wrap gap-3"><select className="field max-w-xs" value={type} onChange={(e) => setType(e.target.value)}><option value="drugs">Drug dataset</option><option value="interactions">Interaction dataset</option><option value="food">Food interaction dataset</option><option value="icsr">ADR reports</option></select><input className="field max-w-md" type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setFile(e.target.files[0])} /><button className="primary" disabled={!file} onClick={() => upload(false)}><Upload size={18} /> Preview</button><button className="secondary" disabled={!file} onClick={() => upload(true)}><FileSpreadsheet size={18} /> Import</button></div></div>{preview && <div className="panel mt-4"><h3 className="text-lg font-bold">{preview.totalRows} rows parsed</h3><p className="text-sm text-slate-500">{preview.invalidRows.length} invalid rows</p><pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">{JSON.stringify(preview.preview, null, 2)}</pre></div>}</View>;
+}
+
+function About() {
+  const links = [
+    { label: "vipin22nov@gmail.com", helper: "Email", href: "mailto:vipin22nov@gmail.com", icon: Mail },
+    { label: "LinkedIn profile", helper: "www.linkedin.com/in/vipin-prajapati-5a11a0275", href: "https://www.linkedin.com/in/vipin-prajapati-5a11a0275", icon: Linkedin },
+    { label: "GitHub profile", helper: "github.com/VipinPrajapati22", href: "https://github.com/VipinPrajapati22", icon: Github }
+  ];
+
+  return (
+    <View>
+      <section className="mx-auto max-w-3xl">
+        <div className="panel">
+          <p className="text-sm font-bold uppercase tracking-wide text-clinical-600">About the creator</p>
+          <h2 className="mt-2 text-2xl font-bold">Vipin Prajapati</h2>
+          <p className="mt-3 text-slate-600 dark:text-slate-300">
+            Drug Interaction Awareness System is a pharmacy and pharmacovigilance portfolio project for safer self-medication awareness, interaction screening, and patient counseling support.
+          </p>
+          <div className="mt-6 space-y-3">
+            {links.map(({ label, helper, href, icon: Icon }) => (
+              <a key={href} href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noreferrer" className="flex items-center gap-4 rounded-lg border border-slate-200 p-4 transition hover:border-clinical-300 hover:bg-clinical-50 dark:border-slate-800 dark:hover:bg-slate-800">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-clinical-100 text-clinical-700 dark:bg-clinical-900/50 dark:text-clinical-100"><Icon size={20} /></span>
+                <span>
+                  <span className="block font-semibold">{label}</span>
+                  <span className="text-sm text-slate-500">{helper}</span>
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+    </View>
+  );
 }
 
 function SearchBox({ value, setValue, suggestions = [] }) {
@@ -360,7 +448,8 @@ export default function App() {
     "Food Checker": <FoodChecker />,
     "ICSR Reporting": <IcsrReporting />,
     Counseling: <Counseling drugs={drugs} />,
-    Admin: <Admin />
+    Admin: <Admin />,
+    About: <About />
   };
 
   return <Shell user={user} onLogout={logout} dark={dark} setDark={setDark} active={active} setActive={setActive}>{screens[active]}</Shell>;

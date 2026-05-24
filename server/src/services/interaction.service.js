@@ -10,6 +10,11 @@ const RXNAV_INTERACTION_BASE = "https://rxnav.nlm.nih.gov/REST/interaction";
 const normalize = (value = "") => String(value).toLowerCase().trim();
 const uniq = (items) => [...new Set(items.filter(Boolean))];
 const escapeRegex = (value = "") => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const sentence = (value = "", max = 170) => {
+  const clean = String(value).replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, max).replace(/\s+\S*$/, "")}.`;
+};
 
 const fetchJson = async (url) => {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -195,9 +200,143 @@ const localInteractionMatches = async (resolvedDrugs) => {
   });
 };
 
+const hasAny = (drug, terms) => {
+  const text = normalize([
+    drug.drugName,
+    drug.genericName,
+    drug.therapeuticClass,
+    ...(drug.indications || []),
+    ...(drug.contraindications || [])
+  ].join(" "));
+  return terms.some((term) => text.includes(term));
+};
+
+const makeRuleInteraction = (a, b, rule) => ({
+  _id: `rule-${normalize(a.drugName)}-${normalize(b.drugName)}-${rule.key}`,
+  drugs: [a.drugName, b.drugName],
+  severity: rule.severity,
+  mechanism: rule.mechanism,
+  clinicalEffect: rule.effect,
+  pharmacistRecommendation: rule.recommendation,
+  monitoringAdvice: rule.monitoring,
+  source: "clinical-rule",
+  interactionGroup: "Clinical safety rules"
+});
+
+const clinicalInteractionRules = [
+  {
+    key: "bleeding",
+    severity: "Severe",
+    left: ["warfarin", "anticoagulant", "apixaban", "rivaroxaban"],
+    right: ["aspirin", "antiplatelet", "clopidogrel", "nsaid", "ibuprofen", "ssri", "sertraline", "fluoxetine"],
+    mechanism: "Additive effect on bleeding risk.",
+    effect: "Higher risk of bruising, GI bleeding, or raised INR.",
+    recommendation: "Avoid unnecessary combination; confirm indication.",
+    monitoring: "Check bleeding symptoms, INR if on warfarin, Hb, and stool color."
+  },
+  {
+    key: "nitrates-pde5",
+    severity: "Contraindicated",
+    left: ["sildenafil", "pde5"],
+    right: ["nitroglycerin", "nitrate"],
+    mechanism: "Both increase vasodilation.",
+    effect: "Can cause dangerous hypotension or syncope.",
+    recommendation: "Do not combine.",
+    monitoring: "Urgent review if chest pain, dizziness, or fainting occurs."
+  },
+  {
+    key: "renal-triple",
+    severity: "Moderate",
+    left: ["ace inhibitor", "arb", "enalapril", "losartan"],
+    right: ["nsaid", "ibuprofen", "diuretic", "furosemide", "spironolactone"],
+    mechanism: "Reduced renal perfusion or potassium imbalance.",
+    effect: "Acute kidney injury, raised potassium, or loss of BP control.",
+    recommendation: "Use shortest course and hydrate; avoid in kidney disease.",
+    monitoring: "Check creatinine, potassium, BP, and swelling."
+  },
+  {
+    key: "qt",
+    severity: "Severe",
+    left: ["amiodarone", "ondansetron", "domperidone", "azithromycin", "fluconazole"],
+    right: ["amiodarone", "ondansetron", "domperidone", "azithromycin", "fluconazole", "ssri"],
+    mechanism: "Additive QT prolongation risk.",
+    effect: "Palpitations, dizziness, or serious arrhythmia.",
+    recommendation: "Avoid multiple QT-risk drugs when possible.",
+    monitoring: "Review ECG, potassium, magnesium, and cardiac history."
+  },
+  {
+    key: "cns",
+    severity: "Severe",
+    left: ["tramadol", "opioid", "alprazolam", "benzodiazepine"],
+    right: ["alprazolam", "benzodiazepine", "tramadol", "opioid", "antihistamine", "cetirizine"],
+    mechanism: "Additive CNS and respiratory depression.",
+    effect: "Excess sedation, falls, confusion, or breathing difficulty.",
+    recommendation: "Avoid unsupervised use together.",
+    monitoring: "Watch alertness, falls, breathing, and alcohol use."
+  },
+  {
+    key: "hypoglycemia",
+    severity: "Moderate",
+    left: ["insulin", "glimepiride", "sulfonylurea", "antidiabetic"],
+    right: ["insulin", "glimepiride", "sulfonylurea", "beta blocker", "bisoprolol"],
+    mechanism: "Additive glucose lowering or masked symptoms.",
+    effect: "Hypoglycemia; beta blockers may hide palpitations.",
+    recommendation: "Counsel on meals and glucose monitoring.",
+    monitoring: "Check blood glucose and sweating, confusion, tremor."
+  },
+  {
+    key: "statin-inhibitor",
+    severity: "Moderate",
+    left: ["statin", "atorvastatin", "rosuvastatin"],
+    right: ["azole", "ketoconazole", "fluconazole", "macrolide", "azithromycin", "amiodarone"],
+    mechanism: "May increase statin exposure.",
+    effect: "Muscle pain or rare rhabdomyolysis risk.",
+    recommendation: "Consider temporary hold or alternative if high risk.",
+    monitoring: "Ask about muscle pain; check CK if symptomatic."
+  },
+  {
+    key: "warfarin-metabolism",
+    severity: "Severe",
+    left: ["warfarin"],
+    right: ["amiodarone", "azole", "fluconazole", "ketoconazole", "antibiotic", "metronidazole", "ciprofloxacin"],
+    mechanism: "Can increase warfarin effect.",
+    effect: "Raised INR and bleeding risk.",
+    recommendation: "Coordinate prescriber review and INR plan.",
+    monitoring: "Check INR within a few days and counsel bleeding red flags."
+  },
+  {
+    key: "digoxin",
+    severity: "Severe",
+    left: ["digoxin"],
+    right: ["amiodarone", "diuretic", "furosemide", "spironolactone", "macrolide"],
+    mechanism: "Digoxin level or electrolyte changes may increase toxicity.",
+    effect: "Nausea, visual changes, bradycardia, or arrhythmia.",
+    recommendation: "Review dose and renal function.",
+    monitoring: "Check pulse, potassium, renal function, and digoxin level if needed."
+  }
+];
+
+const ruleBasedInteractionMatches = (resolvedDrugs) => {
+  const records = [];
+  for (let i = 0; i < resolvedDrugs.length; i += 1) {
+    for (let j = i + 1; j < resolvedDrugs.length; j += 1) {
+      const a = resolvedDrugs[i];
+      const b = resolvedDrugs[j];
+      clinicalInteractionRules.forEach((rule) => {
+        const forward = hasAny(a, rule.left) && hasAny(b, rule.right);
+        const reverse = hasAny(a, rule.right) && hasAny(b, rule.left);
+        const sameDrugOnly = normalize(a.drugName) === normalize(b.drugName);
+        if ((forward || reverse) && !sameDrugOnly) records.push(makeRuleInteraction(a, b, rule));
+      });
+    }
+  }
+  return records.filter((item, index, arr) => index === arr.findIndex((candidate) => candidate._id === item._id));
+};
+
 export const checkInteractions = async ({ drugs = [], severity = "All" }) => {
   const resolvedDrugs = (await Promise.all(drugs.filter(Boolean).map((drug) => resolveDrug(drug)))).filter(Boolean);
   const local = await localInteractionMatches(resolvedDrugs);
+  const rules = ruleBasedInteractionMatches(resolvedDrugs);
 
   const rxcuis = resolvedDrugs.map((drug) => drug.rxcui).filter(Boolean);
   let external = [];
@@ -212,7 +351,7 @@ export const checkInteractions = async ({ drugs = [], severity = "All" }) => {
     external = await saveInteractions(records);
   }
 
-  const combined = [...local, ...external];
+  const combined = [...local, ...external, ...rules];
   const deduped = combined.filter((item, index, arr) => index === arr.findIndex((candidate) => candidate.rawDescription === item.rawDescription && candidate.drugs.join("|") === item.drugs.join("|")));
   const filtered = severity === "All" ? deduped : deduped.filter((item) => item.severity === severity);
   const grouped = filtered.reduce((acc, item) => {
@@ -228,27 +367,31 @@ export const buildAdvancedCounselingWarnings = ({ medicines = [], patientProfile
   const warnings = interactions.map((item) => ({
     level: item.severity === "Contraindicated" || item.severity === "Severe" ? "red" : item.severity === "Moderate" ? "yellow" : "green",
     title: `${item.drugs.join(" + ")} interaction`,
-    message: `${item.clinicalEffect} ${item.pharmacistRecommendation}`
+    message: sentence(`${item.clinicalEffect} ${item.pharmacistRecommendation}`, 150)
   }));
 
   foodInteractions.forEach((item) => warnings.push({
     level: item.severity === "Severe" ? "red" : item.severity === "Moderate" ? "yellow" : "green",
     title: `${item.drug} with ${item.food}`,
-    message: item.patientCounselingAdvice
+    message: sentence(item.patientCounselingAdvice, 130)
   }));
 
   resolvedDrugs.forEach((drug) => {
-    if (drug.boxedWarnings?.length) warnings.push({ level: "red", title: `${drug.drugName} black box warning`, message: drug.boxedWarnings[0] });
-    if (drug.pregnancyWarnings?.length || patientProfile.pregnancy) warnings.push({ level: patientProfile.pregnancy ? "red" : "yellow", title: `${drug.drugName} pregnancy warning`, message: drug.pregnancyWarnings?.[0] || "Confirm pregnancy safety from the latest product label before use." });
-    if (drug.renalWarnings?.length || patientProfile.kidneyDisease) warnings.push({ level: patientProfile.kidneyDisease ? "red" : "yellow", title: `${drug.drugName} renal warning`, message: drug.renalWarnings?.[0] || "Review renal function and dose adjustment requirements." });
-    if (drug.hepaticWarnings?.length || patientProfile.liverDisease) warnings.push({ level: patientProfile.liverDisease ? "red" : "yellow", title: `${drug.drugName} hepatic warning`, message: drug.hepaticWarnings?.[0] || "Review hepatic impairment precautions and avoid unnecessary exposure." });
+    if (drug.boxedWarnings?.length) warnings.push({ level: "red", title: `${drug.drugName} black box warning`, message: sentence(drug.boxedWarnings[0], 130) });
+    if (drug.pregnancyWarnings?.length || patientProfile.pregnancy) warnings.push({ level: patientProfile.pregnancy ? "red" : "yellow", title: `${drug.drugName} pregnancy`, message: sentence(drug.pregnancyWarnings?.[0] || "Confirm pregnancy safety before use.", 130) });
+    if (drug.renalWarnings?.length || patientProfile.kidneyDisease) warnings.push({ level: patientProfile.kidneyDisease ? "red" : "yellow", title: `${drug.drugName} renal`, message: sentence(drug.renalWarnings?.[0] || "Check renal dose adjustment.", 120) });
+    if (drug.hepaticWarnings?.length || patientProfile.liverDisease) warnings.push({ level: patientProfile.liverDisease ? "red" : "yellow", title: `${drug.drugName} hepatic`, message: sentence(drug.hepaticWarnings?.[0] || "Use caution in liver disease.", 120) });
     const alcoholText = [...(drug.warnings || []), ...(drug.drugInteractionsLabel || [])].find((text) => /alcohol/i.test(text));
-    if (alcoholText) warnings.push({ level: "yellow", title: `${drug.drugName} alcohol warning`, message: alcoholText });
+    if (alcoholText) warnings.push({ level: "yellow", title: `${drug.drugName} alcohol`, message: sentence(alcoholText, 120) });
   });
 
-  if (patientProfile.ageGroup === "elderly") warnings.push({ level: "yellow", title: "Elderly precaution", message: "Review renal function, fall risk, anticholinergic burden, sedation, and duplicate therapy." });
-  if (patientProfile.ageGroup === "pediatric") warnings.push({ level: "yellow", title: "Pediatric warning", message: "Dose must be based on age, weight, and formulation suitability." });
-  if (patientProfile.selfMedication) warnings.push({ level: "red", title: "Self-medication warning", message: "Do not combine prescription medicines, painkillers, antibiotics, alcohol, or supplements without pharmacist review." });
-  if (!warnings.length && medicines.length) warnings.push({ level: "green", title: "No high-risk signal found", message: "Use medicines exactly as directed and report unexpected symptoms early." });
-  return warnings;
+  if (patientProfile.ageGroup === "elderly") warnings.push({ level: "yellow", title: "Elderly", message: "Check renal function, fall risk, sedation, and duplicate therapy." });
+  if (patientProfile.ageGroup === "pediatric") warnings.push({ level: "yellow", title: "Pediatric", message: "Use weight-based dose and correct formulation." });
+  if (patientProfile.selfMedication) warnings.push({ level: "red", title: "Self-medication", message: "Avoid mixing medicines, alcohol, or supplements without pharmacist review." });
+  if (!warnings.length && medicines.length) warnings.push({ level: "green", title: "No major signal", message: "Use as directed and report unusual symptoms." });
+  const rank = { red: 0, yellow: 1, green: 2 };
+  return warnings
+    .filter((item, index, arr) => index === arr.findIndex((candidate) => candidate.title === item.title && candidate.message === item.message))
+    .sort((a, b) => rank[a.level] - rank[b.level])
+    .slice(0, 8);
 };
