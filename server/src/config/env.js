@@ -9,6 +9,6 @@ export const env = {
   clientUrl: process.env.CLIENT_URL || "http://localhost:5173",
   jwtSecret: process.env.JWT_SECRET || "development-only-change-me",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
-  demoMode: String(process.env.DEMO_MODE ?? "false").toLowerCase() === "true",
+  demoMode: String(process.env.DEMO_MODE ?? "true").toLowerCase() === "true",
   openfdaApiKey: process.env.OPENFDA_API_KEY || ""
 };
