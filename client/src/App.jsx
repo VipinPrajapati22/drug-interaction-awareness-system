@@ -1,0 +1,367 @@
+import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { jsPDF } from "jspdf";
+import { motion } from "framer-motion";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  FileSpreadsheet,
+  HeartPulse,
+  LogOut,
+  Moon,
+  Pill,
+  Plus,
+  Search,
+  ShieldCheck,
+  Stethoscope,
+  Sun,
+  Upload
+} from "lucide-react";
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { api } from "./api.js";
+
+const severityClass = {
+  Minor: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-200",
+  Moderate: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200",
+  Severe: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-200",
+  Contraindicated: "bg-rose-200 text-rose-800 dark:bg-rose-950 dark:text-rose-100"
+};
+const warningColor = { red: "border-red-400 bg-red-50 dark:bg-red-950/40", yellow: "border-amber-400 bg-amber-50 dark:bg-amber-950/40", green: "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/40" };
+const nav = [
+  ["Dashboard", BarChart3],
+  ["Drug Database", Pill],
+  ["Interaction Checker", AlertTriangle],
+  ["Food Checker", Stethoscope],
+  ["ICSR Reporting", HeartPulse],
+  ["Counseling", ShieldCheck],
+  ["Admin", FileSpreadsheet]
+];
+
+function AuthScreen({ onLogin }) {
+  const [mode, setMode] = useState("login");
+  const [form, setForm] = useState({ name: "", email: "admin@dias.local", password: "Admin@123", role: "Admin" });
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const endpoint = mode === "login" ? "/auth/login" : "/auth/register";
+    const { data } = await api.post(endpoint, form);
+    localStorage.setItem("dias_token", data.token);
+    localStorage.setItem("dias_user", JSON.stringify(data.user));
+    toast.success("Welcome to DIAS");
+    onLogin(data.user);
+  };
+
+  return (
+    <main className="min-h-screen bg-clinical-50 text-slate-900">
+      <section className="mx-auto grid min-h-screen max-w-6xl gap-8 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+        <div>
+          <div className="mb-8 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-clinical-600 shadow-soft">
+            <ShieldCheck size={18} /> Pharmacovigilance awareness platform
+          </div>
+          <h1 className="max-w-3xl text-4xl font-bold leading-tight text-clinical-900 md:text-6xl">Drug Interaction Awareness System</h1>
+          <p className="mt-5 max-w-2xl text-lg text-slate-600">
+            Screen drug combinations, food risks, adverse reactions, and counseling warnings with WHO-DD and MedDRA-inspired demo data.
+          </p>
+          <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
+            {["50 medicines", "30 DDIs", "25 MedDRA terms"].map((item) => (
+              <div key={item} className="rounded-lg bg-white p-4 font-semibold shadow-soft">{item}</div>
+            ))}
+          </div>
+        </div>
+        <form onSubmit={submit} className="rounded-lg bg-white p-6 shadow-soft">
+          <h2 className="text-2xl font-bold">{mode === "login" ? "Sign in" : "Create account"}</h2>
+          <p className="mt-1 text-sm text-slate-500">Demo admin: admin@dias.local / Admin@123</p>
+          {mode === "register" && <Input label="Name" value={form.name} onChange={(name) => setForm({ ...form, name })} />}
+          <Input label="Email" type="email" value={form.email} onChange={(email) => setForm({ ...form, email })} />
+          <Input label="Password" type="password" value={form.password} onChange={(password) => setForm({ ...form, password })} />
+          {mode === "register" && (
+            <select className="field mt-4" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+              <option>Admin</option><option>Pharmacist</option><option>User</option>
+            </select>
+          )}
+          <button className="mt-5 w-full rounded-lg bg-clinical-600 px-4 py-3 font-semibold text-white hover:bg-clinical-500">{mode === "login" ? "Login" : "Register"}</button>
+          <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")} className="mt-3 w-full text-sm font-semibold text-clinical-600">
+            {mode === "login" ? "Need an account?" : "Already registered?"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function Input({ label, value, onChange, type = "text", placeholder }) {
+  return (
+    <label className="mt-4 block text-sm font-semibold text-slate-600 dark:text-slate-300">
+      {label}
+      <input className="field mt-1" type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+
+function Shell({ user, onLogout, dark, setDark, children, active, setActive }) {
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 border-r border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 lg:block">
+        <div className="flex items-center gap-3 text-xl font-bold text-clinical-600"><Activity /> DIAS</div>
+        <nav className="mt-8 space-y-1">
+          {nav.map(([item, Icon]) => (
+            <button key={item} onClick={() => setActive(item)} className={`nav-btn ${active === item ? "nav-active" : ""}`}><Icon size={18} /> {item}</button>
+          ))}
+        </nav>
+      </aside>
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 lg:ml-72">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-clinical-600">{user.role}</p>
+            <h1 className="text-xl font-bold">{active}</h1>
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <div className="flex lg:hidden">
+              <select className="field" value={active} onChange={(e) => setActive(e.target.value)}>{nav.map(([item]) => <option key={item}>{item}</option>)}</select>
+            </div>
+            <button title="Toggle dark mode" className="icon-btn" onClick={() => setDark(!dark)}>{dark ? <Sun size={18} /> : <Moon size={18} />}</button>
+            <button title="Logout" className="icon-btn" onClick={onLogout}><LogOut size={18} /></button>
+          </div>
+        </div>
+      </header>
+      <main className="p-4 lg:ml-72 lg:p-6">{children}</main>
+    </div>
+  );
+}
+
+function Stat({ label, value, icon: Icon }) {
+  return <div className="panel flex items-center justify-between"><div><p className="text-sm text-slate-500">{label}</p><p className="text-3xl font-bold">{value}</p></div><Icon className="text-clinical-500" /></div>;
+}
+
+function Dashboard({ analytics }) {
+  const pieColors = ["#22c55e", "#f59e0b", "#ef4444", "#9f1239"];
+  return (
+    <View>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Stat label="Medicines" value={analytics?.totals?.drugs || 0} icon={Pill} />
+        <Stat label="Interactions" value={analytics?.totals?.interactions || 0} icon={AlertTriangle} />
+        <Stat label="ICSR Reports" value={analytics?.totals?.reports || 0} icon={HeartPulse} />
+      </div>
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <ChartPanel title="Severity Distribution">
+          <ResponsiveContainer width="100%" height={260}><PieChart><Pie data={analytics?.severityDistribution || []} dataKey="value" nameKey="name" outerRadius={95} label>{(analytics?.severityDistribution || []).map((_, i) => <Cell key={i} fill={pieColors[i % pieColors.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer>
+        </ChartPanel>
+        <ChartPanel title="ADR Trends">
+          <ResponsiveContainer width="100%" height={260}><LineChart data={analytics?.adrTrends || []}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis allowDecimals={false} /><Tooltip /><Line dataKey="count" stroke="#1d78d8" strokeWidth={3} /></LineChart></ResponsiveContainer>
+        </ChartPanel>
+      </div>
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <ChartPanel title="Top Reported Drugs">
+          <ResponsiveContainer width="100%" height={260}><BarChart data={analytics?.topReportedDrugs || []}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" hide /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="value" fill="#1d78d8" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer>
+        </ChartPanel>
+        <div className="panel">
+          <h2 className="section-title">Recent ICSRs</h2>
+          <div className="space-y-3">{(analytics?.recentIcsrs || []).map((item) => <ReportRow key={item.icsrId} item={item} />)}</div>
+        </div>
+      </div>
+    </View>
+  );
+}
+
+function ChartPanel({ title, children }) {
+  return <div className="panel"><h2 className="section-title">{title}</h2>{children}</div>;
+}
+
+function ReportRow({ item }) {
+  return <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"><div className="flex justify-between gap-2"><b>{item.icsrId}</b><Badge value={item.severityClassification} /></div><p className="mt-1 text-sm text-slate-500">{item.suspectedDrug} · {item.reactionDescription}</p></div>;
+}
+
+function DrugDatabase({ drugs, refresh }) {
+  const [q, setQ] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [form, setForm] = useState({ drugName: "", genericName: "", atcCode: "", therapeuticClass: "", dosageForm: "Tablet", route: "Oral", strength: "", manufacturer: "", drugCode: "" });
+  const filtered = useMemo(() => drugs.filter((d) => `${d.drugName} ${d.genericName} ${d.atcCode}`.toLowerCase().includes(q.toLowerCase())), [drugs, q]);
+  useEffect(() => {
+    if (q.trim().length < 2) return setSuggestions([]);
+    const id = setTimeout(async () => {
+      const { data } = await api.get(`/drugs/autocomplete?q=${encodeURIComponent(q)}&limit=8`);
+      setSuggestions(data.data);
+    }, 250);
+    return () => clearTimeout(id);
+  }, [q]);
+  const save = async () => {
+    await api.post("/drugs", { ...form, contraindications: ["Hypersensitivity"], indications: ["Therapeutic use"] });
+    toast.success("Drug added");
+    setForm({ ...form, drugName: "", genericName: "", drugCode: "" });
+    refresh();
+  };
+
+  return (
+    <View>
+      <div className="panel">
+        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="section-title">Global Medicine Search</h2><SearchBox value={q} setValue={setQ} suggestions={suggestions} /></div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">{(q ? suggestions : filtered).slice(0, 50).map((drug) => <DrugCard key={drug._id || drug.drugCode || drug.rxcui} drug={drug} />)}</div>
+      </div>
+      <div className="panel mt-4">
+        <h2 className="section-title">Add Medicine</h2>
+        <div className="grid gap-3 md:grid-cols-4">{Object.keys(form).map((key) => <Input key={key} label={key} value={form[key]} onChange={(value) => setForm({ ...form, [key]: value })} />)}</div>
+        <button onClick={save} className="primary mt-4"><Plus size={18} /> Add drug</button>
+      </div>
+    </View>
+  );
+}
+
+function DrugCard({ drug }) {
+  return <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800"><div className="flex justify-between gap-2"><b>{drug.drugName}</b><span className="text-xs font-bold text-clinical-600">{drug.rxcui || drug.atcCode}</span></div><p className="text-sm text-slate-500">{drug.genericName}</p><p className="mt-2 text-sm">{drug.therapeuticClass} · {drug.strength || "standardized"} · {drug.route || "RxNorm"}</p>{drug.brandNames?.length > 0 && <p className="mt-2 text-xs text-slate-500">Brands: {drug.brandNames.slice(0, 3).join(", ")}</p>}<p className="mt-2 text-xs text-slate-500">{drug.drugCode || drug.source}</p></div>;
+}
+
+function InteractionChecker({ drugs }) {
+  const [selected, setSelected] = useState(["Warfarin", "Aspirin"]);
+  const [severity, setSeverity] = useState("All");
+  const [results, setResults] = useState([]);
+  const [grouped, setGrouped] = useState({});
+  const check = async () => {
+    const { data } = await api.post("/interactions/check", { drugs: selected.filter(Boolean), severity });
+    setResults(data.results);
+    setGrouped(data.grouped || {});
+    toast.success(`${data.count} interaction signal(s) found`);
+  };
+  return (
+    <View>
+      <CheckerPanel title="Drug-Drug Interaction Checker" selected={selected} setSelected={setSelected} drugs={drugs} onCheck={check} severity={severity} setSeverity={setSeverity} actionLabel="Check interactions" />
+      <Results results={results} grouped={grouped} />
+    </View>
+  );
+}
+
+function CheckerPanel({ title, selected, setSelected, drugs, onCheck, severity, setSeverity, actionLabel = "Proceed" }) {
+  return <div className="panel"><h2 className="section-title">{title}</h2><div className="grid gap-3 md:grid-cols-3">{selected.map((value, index) => <DrugAutocomplete key={index} value={value} fallbackDrugs={drugs} onChange={(nextValue) => { const next = [...selected]; next[index] = nextValue; setSelected(next); }} />)}</div><div className="relative z-10 mt-5 flex flex-wrap gap-2">{setSeverity && <select className="field max-w-xs" value={severity} onChange={(e) => setSeverity(e.target.value)}><option>All</option><option>Minor</option><option>Moderate</option><option>Severe</option><option>Contraindicated</option></select>}<button className="secondary" onClick={() => setSelected([...selected, ""])}><Plus size={18} /> Add drug</button><button className="primary" onClick={onCheck}><Search size={18} /> {actionLabel}</button></div></div>;
+}
+
+function Results({ results, grouped = {} }) {
+  const groups = Object.keys(grouped).length ? Object.entries(grouped) : [["Interaction results", results]];
+  return <div className="mt-4 space-y-4">{groups.map(([group, items]) => <div key={group} className="space-y-3"><h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">{group}</h3>{items.map((item) => <div key={item._id || item.rawDescription || item.drugs.join()} className="panel"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-lg font-bold">{item.drugs.join(" + ")}</h3><Badge value={item.severity} /></div><p className="mt-3"><b>Mechanism:</b> {item.mechanism}</p><p><b>Clinical effect:</b> {item.clinicalEffect}</p><p><b>Recommendation:</b> {item.pharmacistRecommendation}</p><p><b>Monitoring:</b> {item.monitoringAdvice}</p>{item.source && <p className="mt-2 text-xs font-semibold text-clinical-600">Source: {item.source}</p>}{item.meddraTerms?.[0] && <p className="mt-2 text-sm text-slate-500">MedDRA: {item.meddraTerms[0].soc} / {item.meddraTerms[0].pt} / {item.meddraTerms[0].llt}</p>}</div>)}</div>)}</div>;
+}
+
+function FoodChecker() {
+  const [form, setForm] = useState({ drug: "Metronidazole", food: "Alcohol" });
+  const [results, setResults] = useState([]);
+  const check = async () => {
+    const { data } = await api.post("/food/check", form);
+    setResults(data.results);
+  };
+  return <View><div className="panel"><h2 className="section-title">Drug-Food Interaction Checker</h2><div className="grid gap-3 md:grid-cols-2"><Input label="Drug" value={form.drug} onChange={(drug) => setForm({ ...form, drug })} /><Input label="Food or drink" value={form.food} onChange={(food) => setForm({ ...form, food })} /></div><button className="primary mt-4" onClick={check}><Search size={18} /> Check food risk</button></div><div className="mt-4 space-y-3">{results.map((item) => <div className="panel" key={`${item.drug}-${item.food}`}><div className="flex justify-between gap-2"><h3 className="text-lg font-bold">{item.drug} + {item.food}</h3><Badge value={item.severity} /></div><p className="mt-3"><b>Pharmacology:</b> {item.pharmacologyExplanation}</p><p><b>Risk mechanism:</b> {item.riskMechanism}</p><p><b>Counseling:</b> {item.patientCounselingAdvice}</p></div>)}</div></View>;
+}
+
+function IcsrReporting() {
+  const [form, setForm] = useState({ patientAge: 45, gender: "Female", suspectedDrug: "Warfarin", concomitantDrugs: "Aspirin", reactionDescription: "Black stool and weakness after taking medicines together", seriousness: "Hospitalisation", outcome: "Recovering", reporterType: "Pharmacist" });
+  const [last, setLast] = useState(null);
+  const submit = async () => {
+    const payload = { ...form, concomitantDrugs: String(form.concomitantDrugs).split(",").map((x) => x.trim()).filter(Boolean) };
+    const { data } = await api.post("/icsr/report", payload);
+    setLast(data.data);
+    toast.success(`Generated ${data.data.icsrId}`);
+  };
+  const pdf = () => {
+    if (!last) return;
+    const doc = new jsPDF();
+    doc.text("Individual Case Safety Report", 14, 18);
+    doc.text(`ICSR ID: ${last.icsrId}`, 14, 32);
+    doc.text(`Suspected drug: ${last.suspectedDrug}`, 14, 44);
+    doc.text(`Reaction: ${last.reactionDescription}`, 14, 56, { maxWidth: 180 });
+    doc.save(`${last.icsrId}.pdf`);
+  };
+  return <View><div className="panel"><h2 className="section-title">Simplified ICSR Reporting</h2><div className="grid gap-3 md:grid-cols-3">{Object.keys(form).map((key) => <Input key={key} label={key} value={form[key]} onChange={(value) => setForm({ ...form, [key]: value })} />)}</div><div className="mt-4 flex gap-2"><button className="primary" onClick={submit}><HeartPulse size={18} /> Submit ICSR</button><button className="secondary" onClick={pdf}>PDF export</button></div></div>{last && <div className="panel mt-4"><h3 className="text-lg font-bold">{last.icsrId}</h3><p>Severity classification: <Badge value={last.severityClassification} /></p><p className="mt-2 text-slate-500">{last.reactionDescription}</p></div>}</View>;
+}
+
+function Counseling({ drugs }) {
+  const [medicines, setMedicines] = useState(["Warfarin", "Aspirin"]);
+  const [profile, setProfile] = useState({ ageGroup: "elderly", pregnancy: false, kidneyDisease: false, liverDisease: false, selfMedication: true });
+  const [foods, setFoods] = useState("Vitamin K rich foods, Alcohol");
+  const [warnings, setWarnings] = useState([]);
+  const run = async () => {
+    const { data } = await api.post("/interactions/counseling", { medicines, patientProfile: profile, foods: foods.split(",").map((item) => item.trim()).filter(Boolean) });
+    setWarnings(data.warnings);
+  };
+  return <View><CheckerPanel title="Patient Counseling Assistant" selected={medicines} setSelected={setMedicines} drugs={drugs} onCheck={run} actionLabel="Proceed" /><div className="panel mt-4"><h2 className="section-title">Patient profile</h2><div className="flex flex-wrap gap-3"><select className="field max-w-xs" value={profile.ageGroup} onChange={(e) => setProfile({ ...profile, ageGroup: e.target.value })}><option>adult</option><option>elderly</option><option>pediatric</option></select>{["pregnancy", "kidneyDisease", "liverDisease", "selfMedication"].map((key) => <label key={key} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800"><input type="checkbox" checked={profile[key]} onChange={(e) => setProfile({ ...profile, [key]: e.target.checked })} /> {key}</label>)}<input className="field max-w-sm" value={foods} onChange={(e) => setFoods(e.target.value)} placeholder="Foods, alcohol, supplements" /></div></div><div className="mt-4 grid gap-3 md:grid-cols-2">{warnings.map((warning, index) => <div key={index} className={`rounded-lg border-l-4 p-4 ${warningColor[warning.level]}`}><h3 className="font-bold">{warning.title}</h3><p className="mt-1 text-sm">{warning.message}</p></div>)}</div></View>;
+}
+
+function Admin() {
+  const [file, setFile] = useState(null);
+  const [type, setType] = useState("drugs");
+  const [preview, setPreview] = useState(null);
+  const upload = async (shouldImport = false) => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("type", type);
+    body.append("import", String(shouldImport));
+    const { data } = await api.post("/excel/upload", body);
+    setPreview(data);
+    toast.success(shouldImport ? "Import complete" : "Preview ready");
+  };
+  return <View><div className="panel"><h2 className="section-title">Excel Upload and Validation</h2><div className="flex flex-wrap gap-3"><select className="field max-w-xs" value={type} onChange={(e) => setType(e.target.value)}><option value="drugs">Drug dataset</option><option value="interactions">Interaction dataset</option><option value="food">Food interaction dataset</option><option value="icsr">ADR reports</option></select><input className="field max-w-md" type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setFile(e.target.files[0])} /><button className="primary" disabled={!file} onClick={() => upload(false)}><Upload size={18} /> Preview</button><button className="secondary" disabled={!file} onClick={() => upload(true)}><FileSpreadsheet size={18} /> Import</button></div></div>{preview && <div className="panel mt-4"><h3 className="text-lg font-bold">{preview.totalRows} rows parsed</h3><p className="text-sm text-slate-500">{preview.invalidRows.length} invalid rows</p><pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">{JSON.stringify(preview.preview, null, 2)}</pre></div>}</View>;
+}
+
+function SearchBox({ value, setValue, suggestions = [] }) {
+  return <label className="relative block min-w-64"><Search className="absolute left-3 top-3 text-slate-400" size={18} /><input className="field pl-10" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Search generic or brand name" />{suggestions.length > 0 && <div className="absolute z-30 mt-2 max-h-72 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-900">{suggestions.map((drug) => <button type="button" key={drug._id || drug.rxcui || drug.drugName} onClick={() => setValue(drug.drugName)} className="block w-full px-3 py-2 text-left text-sm hover:bg-clinical-50 dark:hover:bg-slate-800"><b>{drug.drugName}</b><span className="ml-2 text-xs text-slate-500">{drug.genericName}</span></button>)}</div>}</label>;
+}
+
+function DrugAutocomplete({ value, onChange, fallbackDrugs }) {
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open || !value || value.length < 2) return setSuggestions([]);
+    const id = setTimeout(async () => {
+      const { data } = await api.get(`/drugs/autocomplete?q=${encodeURIComponent(value)}&limit=8`);
+      setSuggestions(data.data);
+    }, 220);
+    return () => clearTimeout(id);
+  }, [value, open]);
+  const list = suggestions.length ? suggestions : fallbackDrugs.slice(0, 8);
+  return <div className="relative"><input className="field" value={value} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 120)} onChange={(e) => { setOpen(true); onChange(e.target.value); }} placeholder="Type generic or brand name" />{open && value?.length >= 2 && list.length > 0 && <div className="absolute z-20 mt-2 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-900">{list.map((drug) => <button type="button" key={drug._id || drug.rxcui || drug.drugCode || drug.drugName} onMouseDown={(event) => event.preventDefault()} onClick={() => { onChange(drug.drugName); setSuggestions([]); setOpen(false); }} className="block w-full px-3 py-2 text-left text-sm hover:bg-clinical-50 dark:hover:bg-slate-800"><b>{drug.drugName}</b><span className="ml-2 text-xs text-slate-500">{drug.rxcui || drug.genericName}</span></button>)}</div>}</div>;
+}
+
+function Badge({ value }) {
+  return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${severityClass[value] || "bg-slate-100 text-slate-700"}`}>{value}</span>;
+}
+
+function View({ children }) {
+  return <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>{children}</motion.div>;
+}
+
+export default function App() {
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem("dias_user") || "null"));
+  const [active, setActive] = useState("Dashboard");
+  const [dark, setDark] = useState(() => localStorage.getItem("dias_theme") === "dark");
+  const [drugs, setDrugs] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+    localStorage.setItem("dias_theme", dark ? "dark" : "light");
+  }, [dark]);
+
+  const load = async () => {
+    if (!localStorage.getItem("dias_token")) return;
+    const [drugRes, analyticsRes] = await Promise.all([api.get("/drugs?limit=100"), api.get("/dashboard/analytics")]);
+    setDrugs(drugRes.data.data);
+    setAnalytics(analyticsRes.data);
+  };
+
+  useEffect(() => { load().catch(() => {}); }, [user]);
+  if (!user) return <AuthScreen onLogin={setUser} />;
+
+  const logout = () => {
+    localStorage.removeItem("dias_token");
+    localStorage.removeItem("dias_user");
+    setUser(null);
+  };
+
+  const screens = {
+    Dashboard: <Dashboard analytics={analytics} />,
+    "Drug Database": <DrugDatabase drugs={drugs} refresh={load} />,
+    "Interaction Checker": <InteractionChecker drugs={drugs} />,
+    "Food Checker": <FoodChecker />,
+    "ICSR Reporting": <IcsrReporting />,
+    Counseling: <Counseling drugs={drugs} />,
+    Admin: <Admin />
+  };
+
+  return <Shell user={user} onLogout={logout} dark={dark} setDark={setDark} active={active} setActive={setActive}>{screens[active]}</Shell>;
+}
