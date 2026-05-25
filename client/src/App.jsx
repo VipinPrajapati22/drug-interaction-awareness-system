@@ -337,20 +337,29 @@ function Counseling({ drugs }) {
   return <View><CheckerPanel title="Patient Counseling Assistant" selected={medicines} setSelected={setMedicines} drugs={drugs} onCheck={run} actionLabel="Proceed" /><div className="panel mt-4"><h2 className="section-title">Patient profile</h2><div className="flex flex-wrap gap-3"><select className="field max-w-xs" value={profile.ageGroup} onChange={(e) => setProfile({ ...profile, ageGroup: e.target.value })}><option>adult</option><option>elderly</option><option>pediatric</option></select>{["pregnancy", "kidneyDisease", "liverDisease", "selfMedication"].map((key) => <label key={key} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800"><input type="checkbox" checked={profile[key]} onChange={(e) => setProfile({ ...profile, [key]: e.target.checked })} /> {key}</label>)}<input className="field max-w-sm" value={foods} onChange={(e) => setFoods(e.target.value)} placeholder="Foods, alcohol, supplements" /></div></div><div className="mt-4 grid gap-3 md:grid-cols-2">{warnings.map((warning, index) => <div key={index} className={`rounded-lg border-l-4 p-4 ${warningColor[warning.level]}`}><h3 className="font-bold">{warning.title}</h3><p className="mt-1 text-sm">{warning.message}</p></div>)}</div></View>;
 }
 
-function Admin() {
+function Admin({ onDataChanged }) {
   const [file, setFile] = useState(null);
   const [type, setType] = useState("drugs");
   const [preview, setPreview] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const upload = async (shouldImport = false) => {
-    const body = new FormData();
-    body.append("file", file);
-    body.append("type", type);
-    body.append("import", String(shouldImport));
-    const { data } = await api.post("/excel/upload", body);
-    setPreview(data);
-    toast.success(shouldImport ? "Import complete" : "Preview ready");
+    setUploading(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("type", type);
+      body.append("import", String(shouldImport));
+      const { data } = await api.post("/excel/upload", body);
+      setPreview(data);
+      if (shouldImport && data.imported) await onDataChanged?.();
+      toast.success(shouldImport ? (data.imported ? "Import complete" : "Fix invalid rows before import") : "Preview ready");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   };
-  return <View><div className="panel"><h2 className="section-title">Excel Upload and Validation</h2><div className="flex flex-wrap gap-3"><select className="field max-w-xs" value={type} onChange={(e) => setType(e.target.value)}><option value="drugs">Drug dataset</option><option value="interactions">Interaction dataset</option><option value="food">Food interaction dataset</option><option value="icsr">ADR reports</option></select><input className="field max-w-md" type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setFile(e.target.files[0])} /><button className="primary" disabled={!file} onClick={() => upload(false)}><Upload size={18} /> Preview</button><button className="secondary" disabled={!file} onClick={() => upload(true)}><FileSpreadsheet size={18} /> Import</button></div></div>{preview && <div className="panel mt-4"><h3 className="text-lg font-bold">{preview.totalRows} rows parsed</h3><p className="text-sm text-slate-500">{preview.invalidRows.length} invalid rows</p><pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">{JSON.stringify(preview.preview, null, 2)}</pre></div>}</View>;
+  return <View><div className="panel"><h2 className="section-title">Excel Upload and Validation</h2><div className="flex flex-wrap gap-3"><select className="field max-w-xs" value={type} onChange={(e) => setType(e.target.value)}><option value="drugs">Drug dataset</option><option value="interactions">Interaction dataset</option><option value="food">Food interaction dataset</option><option value="icsr">ADR reports</option></select><input className="field max-w-md" type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setFile(e.target.files[0])} /><button className="primary" disabled={!file || uploading} onClick={() => upload(false)}><Upload size={18} /> Preview</button><button className="secondary" disabled={!file || uploading} onClick={() => upload(true)}><FileSpreadsheet size={18} /> Import</button></div></div>{preview && <div className="panel mt-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-lg font-bold">{preview.totalRows} rows parsed</h3><p className="text-sm text-slate-500">{preview.validRows} valid rows - {preview.invalidRows.length} invalid rows</p></div><span className="rounded-full bg-clinical-100 px-3 py-1 text-xs font-bold uppercase text-clinical-700 dark:bg-clinical-900/50 dark:text-clinical-100">{preview.detectedType}</span></div>{preview.requestedType !== preview.detectedType && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">Detected as {preview.detectedType}. The importer will use this type instead of the selected {preview.requestedType} format.</p>}{preview.invalidRows.length > 0 && <pre className="mt-3 overflow-auto rounded-lg bg-red-950 p-4 text-xs text-red-50">{JSON.stringify(preview.invalidRows, null, 2)}</pre>}<pre className="mt-3 max-h-96 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">{JSON.stringify(preview.preview, null, 2)}</pre></div>}</View>;
 }
 
 function About() {
@@ -448,7 +457,7 @@ export default function App() {
     "Food Checker": <FoodChecker />,
     "ICSR Reporting": <IcsrReporting />,
     Counseling: <Counseling drugs={drugs} />,
-    Admin: <Admin />,
+    Admin: <Admin onDataChanged={load} />,
     About: <About />
   };
 
