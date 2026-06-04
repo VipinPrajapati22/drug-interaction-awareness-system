@@ -6,6 +6,7 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  Database,
   FileSpreadsheet,
   Github,
   HeartPulse,
@@ -174,31 +175,48 @@ function Stat({ label, value, icon: Icon }) {
   return <div className="panel flex items-center justify-between"><div><p className="text-sm text-slate-500">{label}</p><p className="text-3xl font-bold">{value}</p></div><Icon className="text-clinical-500" /></div>;
 }
 
+function UpdateCard({ update }) {
+  return (
+    <div className="panel flex items-center justify-between">
+      <div>
+        <p className="text-sm text-slate-500">Last database update</p>
+        <p className="text-2xl font-bold">{update?.display || "Not available"}</p>
+        <p className="mt-1 text-xs text-slate-500">{update?.source || "Seeded demo database"}</p>
+      </div>
+      <Database className="text-clinical-500" />
+    </div>
+  );
+}
+
 function Dashboard({ analytics }) {
   const pieColors = ["#22c55e", "#f59e0b", "#ef4444", "#9f1239"];
   return (
     <View>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Stat label="Medicines" value={analytics?.totals?.drugs || 0} icon={Pill} />
         <Stat label="Interactions" value={analytics?.totals?.interactions || 0} icon={AlertTriangle} />
         <Stat label="ICSR Reports" value={analytics?.totals?.reports || 0} icon={HeartPulse} />
+        <UpdateCard update={analytics?.lastDatabaseUpdate} />
       </div>
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <ChartPanel title="Severity Distribution">
+        <ChartPanel title="Monthly ADR Trend">
+          <ResponsiveContainer width="100%" height={260}><LineChart data={analytics?.monthlyAdrTrend || analytics?.adrTrends || []}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis allowDecimals={false} /><Tooltip /><Line dataKey="count" name="ADR reports" stroke="#1d78d8" strokeWidth={3} /></LineChart></ResponsiveContainer>
+        </ChartPanel>
+        <ChartPanel title="Severity Trend">
+          <ResponsiveContainer width="100%" height={260}><LineChart data={analytics?.severityTrend || []}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis allowDecimals={false} /><Tooltip /><Line dataKey="Minor" stroke="#22c55e" strokeWidth={2} /><Line dataKey="Moderate" stroke="#f59e0b" strokeWidth={2} /><Line dataKey="Severe" stroke="#ef4444" strokeWidth={2} /><Line dataKey="Contraindicated" stroke="#9f1239" strokeWidth={2} /></LineChart></ResponsiveContainer>
+        </ChartPanel>
+      </div>
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <ChartPanel title="Top Reported Medicines">
+          <ResponsiveContainer width="100%" height={260}><BarChart data={analytics?.topReportedMedicines || analytics?.topReportedDrugs || []}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" hide /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="value" name="Reports" fill="#1d78d8" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer>
+        </ChartPanel>
+        <ChartPanel title="Current Severity Distribution">
           <ResponsiveContainer width="100%" height={260}><PieChart><Pie data={analytics?.severityDistribution || []} dataKey="value" nameKey="name" outerRadius={95} label>{(analytics?.severityDistribution || []).map((_, i) => <Cell key={i} fill={pieColors[i % pieColors.length]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer>
         </ChartPanel>
-        <ChartPanel title="ADR Trends">
-          <ResponsiveContainer width="100%" height={260}><LineChart data={analytics?.adrTrends || []}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis allowDecimals={false} /><Tooltip /><Line dataKey="count" stroke="#1d78d8" strokeWidth={3} /></LineChart></ResponsiveContainer>
-        </ChartPanel>
       </div>
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <ChartPanel title="Top Reported Drugs">
-          <ResponsiveContainer width="100%" height={260}><BarChart data={analytics?.topReportedDrugs || []}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" hide /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="value" fill="#1d78d8" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer>
-        </ChartPanel>
-        <div className="panel">
-          <h2 className="section-title">Recent ICSRs</h2>
-          <div className="space-y-3">{(analytics?.recentIcsrs || []).map((item) => <ReportRow key={item.icsrId} item={item} />)}</div>
-        </div>
+      <div className="panel mt-4">
+        <h2 className="section-title">Recent ICSRs</h2>
+        <div className="space-y-3">{(analytics?.recentIcsrs || []).map((item) => <ReportRow key={item.icsrId} item={item} />)}</div>
       </div>
     </View>
   );
@@ -209,7 +227,7 @@ function ChartPanel({ title, children }) {
 }
 
 function ReportRow({ item }) {
-  return <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"><div className="flex justify-between gap-2"><b>{item.icsrId}</b><Badge value={item.severityClassification} /></div><p className="mt-1 text-sm text-slate-500">{item.suspectedDrug} · {item.reactionDescription}</p></div>;
+  return <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"><div className="flex justify-between gap-2"><b>{item.icsrId}</b><Badge value={item.severityClassification} /></div><p className="mt-1 text-sm text-slate-500">{item.suspectedDrug} - {item.reactionDescription}</p></div>;
 }
 
 function DrugDatabase({ drugs, refresh }) {
