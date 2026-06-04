@@ -337,11 +337,72 @@ function Counseling({ drugs }) {
   return <View><CheckerPanel title="Patient Counseling Assistant" selected={medicines} setSelected={setMedicines} drugs={drugs} onCheck={run} actionLabel="Proceed" /><div className="panel mt-4"><h2 className="section-title">Patient profile</h2><div className="flex flex-wrap gap-3"><select className="field max-w-xs" value={profile.ageGroup} onChange={(e) => setProfile({ ...profile, ageGroup: e.target.value })}><option>adult</option><option>elderly</option><option>pediatric</option></select>{["pregnancy", "kidneyDisease", "liverDisease", "selfMedication"].map((key) => <label key={key} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800"><input type="checkbox" checked={profile[key]} onChange={(e) => setProfile({ ...profile, [key]: e.target.checked })} /> {key}</label>)}<input className="field max-w-sm" value={foods} onChange={(e) => setFoods(e.target.value)} placeholder="Foods, alcohol, supplements" /></div></div><div className="mt-4 grid gap-3 md:grid-cols-2">{warnings.map((warning, index) => <div key={index} className={`rounded-lg border-l-4 p-4 ${warningColor[warning.level]}`}><h3 className="font-bold">{warning.title}</h3><p className="mt-1 text-sm">{warning.message}</p></div>)}</div></View>;
 }
 
-function Admin({ onDataChanged }) {
-  const [file, setFile] = useState(null);
-  const [type, setType] = useState("drugs");
-  const [preview, setPreview] = useState(null);
+const previewColumns = {
+  interactions: [
+    { key: "drug1", label: "Drug 1", value: (row) => row.drugs?.[0] },
+    { key: "drug2", label: "Drug 2", value: (row) => row.drugs?.[1] },
+    { key: "severity", label: "Severity", value: (row) => row.severity },
+    { key: "clinicalEffect", label: "Clinical effect", value: (row) => row.clinicalEffect },
+    { key: "pharmacistRecommendation", label: "Recommendation", value: (row) => row.pharmacistRecommendation }
+  ],
+  food: [
+    { key: "drug", label: "Drug", value: (row) => row.drug },
+    { key: "food", label: "Food or drink", value: (row) => row.food },
+    { key: "severity", label: "Severity", value: (row) => row.severity },
+    { key: "pharmacologyExplanation", label: "Explanation", value: (row) => row.pharmacologyExplanation },
+    { key: "patientCounselingAdvice", label: "Counseling advice", value: (row) => row.patientCounselingAdvice }
+  ],
+  drugs: [
+    { key: "drugName", label: "Drug name", value: (row) => row.drugName },
+    { key: "genericName", label: "Generic", value: (row) => row.genericName },
+    { key: "atcCode", label: "ATC", value: (row) => row.atcCode },
+    { key: "therapeuticClass", label: "Class", value: (row) => row.therapeuticClass },
+    { key: "strength", label: "Strength", value: (row) => row.strength }
+  ],
+  icsr: [
+    { key: "patientAge", label: "Age", value: (row) => row.patientAge },
+    { key: "gender", label: "Gender", value: (row) => row.gender },
+    { key: "suspectedDrug", label: "Suspected drug", value: (row) => row.suspectedDrug },
+    { key: "reactionDescription", label: "Reaction", value: (row) => row.reactionDescription },
+    { key: "seriousness", label: "Seriousness", value: (row) => row.seriousness }
+  ]
+};
+
+function PreviewTable({ preview }) {
+  const rows = preview.preview || [];
+  const columns = previewColumns[preview.detectedType] || previewColumns.drugs;
+  return (
+    <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+          <thead className="bg-slate-50 text-left text-xs font-bold uppercase text-slate-500 dark:bg-slate-950/60 dark:text-slate-400">
+            <tr>{columns.map((column) => <th key={column.key} className="px-4 py-3">{column.label}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
+            {rows.map((row, index) => (
+              <tr key={`${preview.detectedType}-${index}`} className="align-top">
+                {columns.map((column) => {
+                  const value = column.value(row) || "Not provided";
+                  return (
+                    <td key={column.key} className="max-w-xs px-4 py-3">
+                      {column.key === "severity" ? <Badge value={value} /> : <span className={value === "Not provided" ? "text-slate-400" : ""}>{value}</span>}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {preview.totalRows > rows.length && <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/60">Showing first {rows.length} rows from {preview.totalRows} parsed rows.</div>}
+    </div>
+  );
+}
+
+function Admin({ onDataChanged, uploadState, setUploadState }) {
+  const { file, type, preview, imports = [] } = uploadState;
   const [uploading, setUploading] = useState(false);
+  const updateUploadState = (next) => setUploadState((current) => ({ ...current, ...next }));
   const upload = async (shouldImport = false) => {
     setUploading(true);
     try {
@@ -350,7 +411,15 @@ function Admin({ onDataChanged }) {
       body.append("type", type);
       body.append("import", String(shouldImport));
       const { data } = await api.post("/excel/upload", body);
-      setPreview(data);
+      const nextImport = shouldImport && data.imported ? {
+        id: `${Date.now()}-${file.name}`,
+        fileName: file.name,
+        type: data.detectedType,
+        validRows: data.validRows,
+        totalRows: data.totalRows,
+        importedAt: new Date().toLocaleString()
+      } : null;
+      updateUploadState({ preview: data, imports: nextImport ? [nextImport, ...imports].slice(0, 5) : imports });
       if (shouldImport && data.imported) await onDataChanged?.();
       toast.success(shouldImport ? (data.imported ? "Import complete" : "Fix invalid rows before import") : "Preview ready");
     } catch (error) {
@@ -359,7 +428,73 @@ function Admin({ onDataChanged }) {
       setUploading(false);
     }
   };
-  return <View><div className="panel"><h2 className="section-title">Excel Upload and Validation</h2><div className="flex flex-wrap gap-3"><select className="field max-w-xs" value={type} onChange={(e) => setType(e.target.value)}><option value="drugs">Drug dataset</option><option value="interactions">Interaction dataset</option><option value="food">Food interaction dataset</option><option value="icsr">ADR reports</option></select><input className="field max-w-md" type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setFile(e.target.files[0])} /><button className="primary" disabled={!file || uploading} onClick={() => upload(false)}><Upload size={18} /> Preview</button><button className="secondary" disabled={!file || uploading} onClick={() => upload(true)}><FileSpreadsheet size={18} /> Import</button></div></div>{preview && <div className="panel mt-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-lg font-bold">{preview.totalRows} rows parsed</h3><p className="text-sm text-slate-500">{preview.validRows} valid rows - {preview.invalidRows.length} invalid rows</p></div><span className="rounded-full bg-clinical-100 px-3 py-1 text-xs font-bold uppercase text-clinical-700 dark:bg-clinical-900/50 dark:text-clinical-100">{preview.detectedType}</span></div>{preview.requestedType !== preview.detectedType && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">Detected as {preview.detectedType}. The importer will use this type instead of the selected {preview.requestedType} format.</p>}{preview.invalidRows.length > 0 && <pre className="mt-3 overflow-auto rounded-lg bg-red-950 p-4 text-xs text-red-50">{JSON.stringify(preview.invalidRows, null, 2)}</pre>}<pre className="mt-3 max-h-96 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">{JSON.stringify(preview.preview, null, 2)}</pre></div>}</View>;
+  return (
+    <View>
+      <div className="panel">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="section-title">Excel Upload and Validation</h2>
+            <p className="text-sm text-slate-500">CSV/XLSX files are normalized before import, including simple drug1/drug2 interaction sheets.</p>
+          </div>
+          {file && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{file.name}</span>}
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.4fr_auto_auto]">
+          <select className="field" value={type} onChange={(e) => updateUploadState({ type: e.target.value, preview: null })}>
+            <option value="drugs">Drug dataset</option>
+            <option value="interactions">Interaction dataset</option>
+            <option value="food">Food interaction dataset</option>
+            <option value="icsr">ADR reports</option>
+          </select>
+          <input className="field" type="file" accept=".xlsx,.xls,.csv" onChange={(e) => updateUploadState({ file: e.target.files[0] || null, preview: null })} />
+          <button className="primary justify-center" disabled={!file || uploading} onClick={() => upload(false)}><Upload size={18} /> {uploading ? "Reading..." : "Preview"}</button>
+          <button className="secondary justify-center" disabled={!file || uploading || (preview && preview.invalidRows?.length > 0)} onClick={() => upload(true)}><FileSpreadsheet size={18} /> Import</button>
+        </div>
+      </div>
+      {preview && (
+        <div className="panel mt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold">Import preview</h3>
+              <p className="text-sm text-slate-500">{preview.validRows} valid rows from {preview.totalRows} parsed rows</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-clinical-100 px-3 py-1 text-xs font-bold uppercase text-clinical-700 dark:bg-clinical-900/50 dark:text-clinical-100">{preview.detectedType}</span>
+              {preview.invalidRows.length === 0 ? <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-200">Ready to import</span> : <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-bold text-red-700 dark:bg-red-900/50 dark:text-red-200">{preview.invalidRows.length} rows need fixes</span>}
+            </div>
+          </div>
+          {preview.requestedType !== preview.detectedType && <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">Detected as {preview.detectedType}. The importer will use this format instead of the selected {preview.requestedType} format.</p>}
+          <PreviewTable preview={preview} />
+          {preview.invalidRows.length > 0 && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
+              <h4 className="font-bold text-red-800 dark:text-red-100">Rows needing fixes</h4>
+              <div className="mt-2 grid gap-2 text-sm text-red-700 dark:text-red-100">
+                {preview.invalidRows.slice(0, 6).map((item) => <p key={item.index}>Row {item.index}: {item.errors.join(", ")}</p>)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {imports.length > 0 && (
+        <div className="panel mt-4">
+          <h2 className="section-title">Recent imports this session</h2>
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {imports.map((item) => (
+              <div key={item.id} className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-bold">{item.fileName}</p>
+                    <p className="text-sm text-slate-500">{item.validRows} rows imported</p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">{item.type}</span>
+                </div>
+                <p className="mt-3 text-xs text-slate-500">{item.importedAt}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </View>
+  );
 }
 
 function About() {
@@ -428,6 +563,7 @@ export default function App() {
   const [dark, setDark] = useState(() => localStorage.getItem("dias_theme") === "dark");
   const [drugs, setDrugs] = useState([]);
   const [analytics, setAnalytics] = useState(null);
+  const [adminUploadState, setAdminUploadState] = useState({ file: null, type: "drugs", preview: null, imports: [] });
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -442,6 +578,9 @@ export default function App() {
   };
 
   useEffect(() => { load().catch(() => {}); }, [user]);
+  useEffect(() => {
+    if (user && active === "Dashboard") load().catch(() => {});
+  }, [active, user]);
   if (!user) return <AuthScreen onLogin={setUser} />;
 
   const logout = () => {
@@ -457,7 +596,7 @@ export default function App() {
     "Food Checker": <FoodChecker />,
     "ICSR Reporting": <IcsrReporting />,
     Counseling: <Counseling drugs={drugs} />,
-    Admin: <Admin onDataChanged={load} />,
+    Admin: <Admin onDataChanged={load} uploadState={adminUploadState} setUploadState={setAdminUploadState} />,
     About: <About />
   };
 
