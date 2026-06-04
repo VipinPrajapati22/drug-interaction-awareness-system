@@ -248,7 +248,7 @@ function DrugDatabase({ drugs, refresh }) {
 }
 
 function DrugCard({ drug }) {
-  return <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800"><div className="flex justify-between gap-2"><b>{drug.drugName}</b><span className="text-xs font-bold text-clinical-600">{drug.rxcui || drug.atcCode}</span></div><p className="text-sm text-slate-500">{drug.genericName}</p><p className="mt-2 text-sm">{drug.therapeuticClass} · {drug.strength || "standardized"} · {drug.route || "RxNorm"}</p>{drug.brandNames?.length > 0 && <p className="mt-2 text-xs text-slate-500">Brands: {drug.brandNames.slice(0, 3).join(", ")}</p>}<p className="mt-2 text-xs text-slate-500">{drug.drugCode || drug.source}</p></div>;
+  return <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800"><div className="flex justify-between gap-2"><b>{drug.drugName}</b><span className="text-xs font-bold text-clinical-600">{drug.rxcui || drug.atcCode}</span></div><p className="text-sm text-slate-500">{drug.genericName}</p><p className="mt-2 text-sm">{drug.therapeuticClass} - {drug.dosageForm || "Standard dosage form"} - {drug.strength || "standardized"} - {drug.route || "RxNorm"}</p>{drug.brandNames?.length > 0 && <p className="mt-2 text-xs text-slate-500">Brands: {drug.brandNames.slice(0, 3).join(", ")}</p>}<p className="mt-2 text-xs text-slate-500">{drug.drugCode || drug.source}</p></div>;
 }
 
 function InteractionChecker({ drugs }) {
@@ -356,8 +356,9 @@ const previewColumns = {
     { key: "drugName", label: "Drug name", value: (row) => row.drugName },
     { key: "genericName", label: "Generic", value: (row) => row.genericName },
     { key: "atcCode", label: "ATC", value: (row) => row.atcCode },
-    { key: "therapeuticClass", label: "Class", value: (row) => row.therapeuticClass },
-    { key: "strength", label: "Strength", value: (row) => row.strength }
+    { key: "dosageForm", label: "Dosage form", value: (row) => row.dosageForm },
+    { key: "strength", label: "Strength", value: (row) => row.strength },
+    { key: "route", label: "Route", value: (row) => row.route }
   ],
   icsr: [
     { key: "patientAge", label: "Age", value: (row) => row.patientAge },
